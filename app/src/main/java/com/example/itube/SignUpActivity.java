@@ -14,6 +14,7 @@ public class SignUpActivity extends AppCompatActivity {
     private EditText usernameEditText;
     private EditText passwordEditText;
     private EditText confirmPasswordEditText;
+    private Button signUpButton;
     private DatabaseHelper dbHelper;
 
     @Override
@@ -21,12 +22,12 @@ public class SignUpActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_signup);
 
-        dbHelper = new DatabaseHelper(this);
+        dbHelper = DatabaseHelper.getInstance(this);
         nameEditText = findViewById(R.id.editTextName);
         usernameEditText = findViewById(R.id.editTextUsernameSignUp);
         passwordEditText = findViewById(R.id.editTextPasswordSignUp);
         confirmPasswordEditText = findViewById(R.id.editTextConfirmPassword);
-        Button signUpButton = findViewById(R.id.buttonSignUpUser);
+        signUpButton = findViewById(R.id.buttonSignUpUser);
 
         signUpButton.setOnClickListener(v -> attemptSignUp());
     }
@@ -51,14 +52,8 @@ public class SignUpActivity extends AppCompatActivity {
             return;
         }
 
-        if (dbHelper.usernameExists(username)) {
-            usernameEditText.setError("That username is already taken");
-            usernameEditText.requestFocus();
-            return;
-        }
-
-        if (TextUtils.isEmpty(password) || password.length() < 8) {
-            passwordEditText.setError("Use at least 8 characters");
+        if (TextUtils.isEmpty(password) || password.length() < 8 || password.trim().isEmpty()) {
+            passwordEditText.setError("Use at least 8 non-blank characters");
             passwordEditText.requestFocus();
             return;
         }
@@ -69,14 +64,29 @@ public class SignUpActivity extends AppCompatActivity {
             return;
         }
 
-        long newRowId = dbHelper.addUser(name, username, password);
-        if (newRowId < 0) {
-            Toast.makeText(this, "Unable to create account", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        signUpButton.setEnabled(false);
 
-        Toast.makeText(this, "Account created — sign in to continue", Toast.LENGTH_SHORT).show();
-        finish();
+        AppExecutors.database().execute(() -> {
+            boolean alreadyExists = dbHelper.usernameExists(username);
+            long newRowId = alreadyExists ? -1 : dbHelper.addUser(name, username, password);
+
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
+
+                signUpButton.setEnabled(true);
+
+                if (alreadyExists || newRowId < 0) {
+                    usernameEditText.setError("That username is already taken");
+                    usernameEditText.requestFocus();
+                    return;
+                }
+
+                Toast.makeText(this, "Account created — sign in to continue", Toast.LENGTH_SHORT).show();
+                finish();
+            });
+        });
     }
 
     private void clearErrors() {
