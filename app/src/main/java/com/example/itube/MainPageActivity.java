@@ -12,6 +12,7 @@ import androidx.appcompat.app.AppCompatActivity;
 public class MainPageActivity extends AppCompatActivity {
 
     private EditText videoUrlEditText;
+    private Button addToPlaylistButton;
     private DatabaseHelper dbHelper;
 
     @Override
@@ -19,10 +20,10 @@ public class MainPageActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_mainpage);
 
-        dbHelper = new DatabaseHelper(this);
+        dbHelper = DatabaseHelper.getInstance(this);
         videoUrlEditText = findViewById(R.id.editTextVideoUrl);
         Button playButton = findViewById(R.id.buttonPlay);
-        Button addToPlaylistButton = findViewById(R.id.buttonAddToPlaylist);
+        addToPlaylistButton = findViewById(R.id.buttonAddToPlaylist);
         Button myPlaylistButton = findViewById(R.id.buttonMyPlaylist);
         Button logoutButton = findViewById(R.id.buttonLogout);
 
@@ -56,13 +57,26 @@ public class MainPageActivity extends AppCompatActivity {
             return;
         }
 
-        long result = dbHelper.addToPlaylist(userId, normalizedUrl);
-        if (result < 0) {
-            Toast.makeText(this, "This video is already in your playlist", Toast.LENGTH_SHORT).show();
-        } else {
-            Toast.makeText(this, "Added to playlist", Toast.LENGTH_SHORT).show();
-            videoUrlEditText.setText("");
-        }
+        addToPlaylistButton.setEnabled(false);
+
+        AppExecutors.database().execute(() -> {
+            long result = dbHelper.addToPlaylist(userId, normalizedUrl);
+
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
+
+                addToPlaylistButton.setEnabled(true);
+
+                if (result < 0) {
+                    Toast.makeText(this, "This video is already in your playlist", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, "Added to playlist", Toast.LENGTH_SHORT).show();
+                    videoUrlEditText.setText("");
+                }
+            });
+        });
     }
 
     private String getValidatedVideoUrl() {
