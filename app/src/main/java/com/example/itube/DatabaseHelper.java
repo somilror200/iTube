@@ -5,11 +5,10 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.util.Base64;
 
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
-import java.util.Base64;
 
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
@@ -65,8 +64,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // This is a portfolio/demo app. Version 2 intentionally resets the old schema
-        // because version 1 stored plaintext passwords and should not be migrated forward.
+        // Version 1 stored plaintext passwords, so this demo app deliberately
+        // resets the local database instead of migrating insecure credentials.
         db.execSQL("DROP TABLE IF EXISTS " + TABLE_PLAYLIST);
         db.execSQL("DROP TABLE IF EXISTS " + TABLE_USERS);
         onCreate(db);
@@ -171,7 +170,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             byte[] salt = new byte[SALT_BYTES];
             new SecureRandom().nextBytes(salt);
             byte[] hash = pbkdf2(password.toCharArray(), salt);
-            return Base64.getEncoder().encodeToString(salt) + ":" + Base64.getEncoder().encodeToString(hash);
+            return Base64.encodeToString(salt, Base64.NO_WRAP) + ":" +
+                    Base64.encodeToString(hash, Base64.NO_WRAP);
         } catch (Exception e) {
             throw new IllegalStateException("Unable to hash password", e);
         }
@@ -183,8 +183,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             if (parts.length != 2) {
                 return false;
             }
-            byte[] salt = Base64.getDecoder().decode(parts[0]);
-            byte[] expectedHash = Base64.getDecoder().decode(parts[1]);
+            byte[] salt = Base64.decode(parts[0], Base64.NO_WRAP);
+            byte[] expectedHash = Base64.decode(parts[1], Base64.NO_WRAP);
             byte[] actualHash = pbkdf2(password.toCharArray(), salt);
             return MessageDigest.isEqual(expectedHash, actualHash);
         } catch (Exception e) {
