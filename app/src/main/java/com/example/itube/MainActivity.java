@@ -4,7 +4,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.TextUtils;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -15,6 +14,7 @@ public class MainActivity extends AppCompatActivity {
 
     private EditText usernameEditText;
     private EditText passwordEditText;
+    private Button loginButton;
     private DatabaseHelper dbHelper;
 
     @Override
@@ -22,10 +22,10 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        dbHelper = new DatabaseHelper(this);
+        dbHelper = DatabaseHelper.getInstance(this);
         usernameEditText = findViewById(R.id.usernameEditText);
         passwordEditText = findViewById(R.id.passwordEditText);
-        Button loginButton = findViewById(R.id.loginButton);
+        loginButton = findViewById(R.id.loginButton);
         Button signupButton = findViewById(R.id.signupButton);
 
         loginButton.setOnClickListener(v -> attemptLogin());
@@ -52,21 +52,29 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        if (!dbHelper.checkUser(username, password)) {
-            Toast.makeText(this, "Invalid username or password", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        loginButton.setEnabled(false);
 
-        long userId = dbHelper.getUserId(username);
-        if (userId < 0) {
-            Toast.makeText(this, "Unable to start your session", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        AppExecutors.database().execute(() -> {
+            long userId = dbHelper.authenticateUser(username, password);
 
-        saveUserId(userId);
-        passwordEditText.setText("");
-        startActivity(new Intent(this, MainPageActivity.class));
-        finish();
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
+
+                loginButton.setEnabled(true);
+
+                if (userId < 0) {
+                    Toast.makeText(this, "Invalid username or password", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                saveUserId(userId);
+                passwordEditText.setText("");
+                startActivity(new Intent(this, MainPageActivity.class));
+                finish();
+            });
+        });
     }
 
     private void saveUserId(long userId) {
