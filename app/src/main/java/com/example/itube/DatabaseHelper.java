@@ -15,7 +15,7 @@ import javax.crypto.spec.PBEKeySpec;
 
 public class DatabaseHelper extends SQLiteOpenHelper {
 
-    private static final String DATABASE_NAME = "itube.db";
+    private static final String DATABASE_NAME = "user.db";
     private static final int DATABASE_VERSION = 2;
 
     private static final int PBKDF2_ITERATIONS = 120_000;
@@ -64,8 +64,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // Version 1 stored plaintext passwords, so this demo app deliberately
-        // resets the local database instead of migrating insecure credentials.
+        // Version 1 stored plaintext passwords. For this local portfolio/demo app,
+        // discard that insecure schema rather than carrying plaintext credentials forward.
         db.execSQL("DROP TABLE IF EXISTS " + TABLE_PLAYLIST);
         db.execSQL("DROP TABLE IF EXISTS " + TABLE_USERS);
         onCreate(db);
