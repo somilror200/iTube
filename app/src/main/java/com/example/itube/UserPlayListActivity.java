@@ -2,22 +2,23 @@ package com.example.itube;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.database.Cursor;
 import android.os.Bundle;
-import android.widget.ArrayAdapter;
-import android.widget.ListView;
+import android.view.View;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
-import java.util.ArrayList;
+import java.util.List;
 
 public class UserPlayListActivity extends AppCompatActivity {
 
-    private final ArrayList<String> playlistItems = new ArrayList<>();
-    private ArrayAdapter<String> adapter;
+    private PlaylistAdapter adapter;
     private DatabaseHelper dbHelper;
+    private TextView emptyState;
     private long userId;
 
     @Override
@@ -25,29 +26,33 @@ public class UserPlayListActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_user_playlist);
 
-        dbHelper = new DatabaseHelper(this);
+        dbHelper = DatabaseHelper.getInstance(this);
         userId = getCurrentUserId();
         if (userId < 0) {
             finish();
             return;
         }
 
-        ListView listViewPlaylist = findViewById(R.id.listViewPlaylist);
-        adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, playlistItems);
-        listViewPlaylist.setAdapter(adapter);
+        RecyclerView recyclerView = findViewById(R.id.recyclerViewPlaylist);
+        emptyState = findViewById(R.id.textEmptyPlaylist);
 
-        listViewPlaylist.setOnItemClickListener((parent, view, position, id) -> {
-            Intent intent = new Intent(this, VideoPlayerActivity.class);
-            intent.putExtra(VideoPlayerActivity.EXTRA_VIDEO_URL, playlistItems.get(position));
-            startActivity(intent);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        recyclerView.setHasFixedSize(false);
+
+        adapter = new PlaylistAdapter(new PlaylistAdapter.Listener() {
+            @Override
+            public void onVideoClick(String videoUrl) {
+                Intent intent = new Intent(UserPlayListActivity.this, VideoPlayerActivity.class);
+                intent.putExtra(VideoPlayerActivity.EXTRA_VIDEO_URL, videoUrl);
+                startActivity(intent);
+            }
+
+            @Override
+            public void onVideoLongClick(String videoUrl) {
+                confirmRemoval(videoUrl);
+            }
         });
-
-        listViewPlaylist.setOnItemLongClickListener((parent, view, position, id) -> {
-            confirmRemoval(playlistItems.get(position));
-            return true;
-        });
-
-        loadPlaylist();
+        recyclerView.setAdapter(adapter);
     }
 
     @Override
@@ -59,19 +64,18 @@ public class UserPlayListActivity extends AppCompatActivity {
     }
 
     private void loadPlaylist() {
-        playlistItems.clear();
+        AppExecutors.database().execute(() -> {
+            List<String> items = dbHelper.getPlaylistItems(userId);
 
-        try (Cursor cursor = dbHelper.getPlaylist(userId)) {
-            while (cursor.moveToNext()) {
-                playlistItems.add(cursor.getString(
-                        cursor.getColumnIndexOrThrow(DatabaseHelper.COLUMN_VIDEO_URL)));
-            }
-        }
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
 
-        adapter.notifyDataSetChanged();
-        if (playlistItems.isEmpty()) {
-            Toast.makeText(this, "Your playlist is empty", Toast.LENGTH_SHORT).show();
-        }
+                adapter.submitItems(items);
+                emptyState.setVisibility(items.isEmpty() ? View.VISIBLE : View.GONE);
+            });
+        });
     }
 
     private void confirmRemoval(String videoUrl) {
@@ -79,12 +83,21 @@ public class UserPlayListActivity extends AppCompatActivity {
                 .setTitle("Remove video?")
                 .setMessage("This will remove the video from your saved playlist.")
                 .setNegativeButton("Cancel", null)
-                .setPositiveButton("Remove", (dialog, which) -> {
-                    if (dbHelper.removeFromPlaylist(userId, videoUrl)) {
-                        loadPlaylist();
-                        Toast.makeText(this, "Removed from playlist", Toast.LENGTH_SHORT).show();
-                    }
-                })
+                .setPositiveButton("Remove", (dialog, which) ->
+                        AppExecutors.database().execute(() -> {
+                            boolean removed = dbHelper.removeFromPlaylist(userId, videoUrl);
+
+                            runOnUiThread(() -> {
+                                if (isFinishing() || isDestroyed()) {
+                                    return;
+                                }
+
+                                if (removed) {
+                                    Toast.makeText(this, "Removed from playlist", Toast.LENGTH_SHORT).show();
+                                    loadPlaylist();
+                                }
+                            });
+                        }))
                 .show();
     }
 
